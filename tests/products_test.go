@@ -250,7 +250,7 @@ func TestDeleteProduct(t *testing.T) {
 
 	// w.Code：Recorder 的状态码字段；断言为 404。
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected product not found, got status %d", w.Code)
+		t.Errorf("expected Product not found, got status %d", w.Code)
 	}
 }
 

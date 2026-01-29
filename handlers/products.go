@@ -4,6 +4,8 @@ package handlers
 import (
 	// encoding/json：用于 JSON 编解码（请求体解析、响应体输出）。
 	"encoding/json"
+	"errors"
+
 	// net/http：HTTP handler 所需的核心类型与工具函数（ResponseWriter、Request、StatusCode、http.Error）。
 	"net/http"
 	// strconv：字符串与数值转换；这里用 Atoi 把 path 中的 id 解析成 int。
@@ -34,7 +36,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 			CreateProduct(w, r)
 		default:
 			// 其他方法不支持：返回 405 Method Not Allowed。
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
 	})
 	// /api/products/：注意以 "/" 结尾时，ServeMux 会做前缀匹配；例如 /api/products/123 会进入 HandleProduct。
@@ -56,7 +58,7 @@ func HandleProduct(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		// 400 Bad Request：客户端传参不合法（id 不是数字）。
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 
@@ -73,18 +75,13 @@ func HandleProduct(w http.ResponseWriter, r *http.Request) {
 		DeleteProduct(w, r, id)
 	default:
 		// 不支持的方法返回 405。
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
 // HealthCheck 健康检查接口：返回固定 JSON，表明服务可用。
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
-	// 设置响应体类型为 JSON，便于客户端正确解析。
-	w.Header().Set("Content-Type", "application/json")
-	// 显式写入状态码 200；如果不调用 WriteHeader，默认也是 200。
-	w.WriteHeader(http.StatusOK)
-	// 写入 JSON 响应；Encode 会在末尾附带一个换行符。
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // GetAllProducts 获取所有产品列表：调用 model 层查询 DB，并以 JSON 形式返回。
@@ -93,16 +90,10 @@ func GetAllProducts(w http.ResponseWriter, r *http.Request) {
 	products, err := models.GetAllProducts(utils.DB)
 	if err != nil {
 		// 500：服务端错误（例如 DB 查询失败、SQL 语法错误、连接异常等）。
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	// 统一返回 JSON。
-	w.Header().Set("Content-Type", "application/json")
-	// 200 OK：成功返回列表。
-	w.WriteHeader(http.StatusOK)
-	// 返回一个带 code/message/data 的包装结构（方便前端统一处理）。
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"code":    http.StatusOK,
 		"message": "success",
 		"data":    products,
@@ -115,26 +106,22 @@ func GetProduct(w http.ResponseWriter, r *http.Request, id int) {
 	product, err := models.GetProductByID(utils.DB, id)
 	if err != nil {
 		// 通过错误消息区分“未找到”和“内部错误”（学习项目的简化写法）。
-		if err.Error() == "product not found" {
+		if errors.Is(err, models.ErrProductNotFound) {
 			// 404 Not Found：资源不存在。
-			http.Error(w, err.Error(), http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "product not found")
 		} else {
 			// 500 Internal Server Error：数据库或其他内部错误。
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
 
-	// 成功返回 JSON。
-	w.Header().Set("Content-Type", "application/json")
-	// 200 OK。
-	w.WriteHeader(http.StatusOK)
-	// data 是单个产品对象。
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"code":    http.StatusOK,
 		"message": "success",
 		"data":    product,
 	})
+
 }
 
 // CreateProduct 创建产品：
@@ -148,7 +135,7 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	// NewDecoder(r.Body)：从请求体流读取 JSON；Decode(&product) 需要传指针才能写入字段。
 	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
 		// 400：请求体不是合法 JSON，或字段类型不匹配导致解码失败。
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// 关闭请求体（释放资源）；defer 确保函数返回时执行。
@@ -157,19 +144,19 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	// 验证必填字段
 	if product.Name == "" {
 		// name 为空：业务校验失败，返回 400。
-		http.Error(w, "name is required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 
 	if product.Price <= 0 {
 		// price 必须为正数：避免无效数据进入 DB。
-		http.Error(w, "price must be greater than 0", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "price must be greater than 0")
 		return
 	}
 
 	if product.Stock < 0 {
 		// stock 不能为负：库存不能小于 0。
-		http.Error(w, "stock cannot be negative", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "stock cannot be negative")
 		return
 	}
 
@@ -177,14 +164,11 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	createdProduct, err := models.CreateProduct(utils.DB, &product)
 	if err != nil {
 		// 500：插入失败（例如数据库写入错误）。
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// 返回 JSON + 201 Created。
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"code":    http.StatusCreated,
 		"message": "product created",
 		"data":    createdProduct,
@@ -200,7 +184,7 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request, id int) {
 	var product models.Product
 	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
 		// 400：JSON 解码失败。
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// 关闭请求体。
@@ -212,43 +196,41 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request, id int) {
 	// 验证必填字段
 	if product.Name == "" {
 		// name 为空：返回 400。
-		http.Error(w, "name is required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 
 	if product.Price <= 0 {
 		// price 非正：返回 400。
-		http.Error(w, "price must be greater than 0", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "price must be greater than 0")
 		return
 	}
 
 	if product.Stock < 0 {
 		// stock 为负：返回 400。
-		http.Error(w, "stock cannot be negative", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "stock cannot be negative")
 		return
 	}
 
 	// 调用 model 层执行 UPDATE；rowsAffected==0 时会返回 "product not found"。
 	updatedProduct, err := models.UpdateProduct(utils.DB, &product)
 	if err != nil {
-		if err.Error() == "product not found" {
+		if errors.Is(err, models.ErrProductNotFound) {
 			// 404：要更新的资源不存在。
-			http.Error(w, err.Error(), http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "product not found")
 		} else {
 			// 500：其他内部错误。
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
 
-	// 成功返回 200 + 更新后的对象。
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"code":    http.StatusOK,
 		"message": "product updated",
 		"data":    updatedProduct,
 	})
+
 }
 
 // DeleteProduct 删除产品：如果不存在返回 404；成功返回 200。
@@ -256,20 +238,16 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request, id int) {
 	// 调用 model 层删除；内部通过 rowsAffected 判断是否真的删除到数据。
 	err := models.DeleteProduct(utils.DB, id)
 	if err != nil {
-		if err.Error() == "product not found" {
-			// 404：要删除的资源不存在。
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if errors.Is(err, models.ErrProductNotFound) {
+			writeError(w, http.StatusNotFound, "product not found")
 		} else {
 			// 500：删除过程的内部错误。
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
 
-	// 成功返回 JSON。
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"code":    http.StatusOK,
 		"message": "product deleted",
 	})

@@ -13,18 +13,20 @@ import (
 // Product 产品模型
 type Product struct {
 	// ID：主键，自增；JSON 输出为 "id"。
-	ID        int       `json:"id"`
+	ID int `json:"id"`
 	// Name：产品名称；JSON 输出为 "name"。
-	Name      string    `json:"name"`
+	Name string `json:"name"`
 	// Price：产品价格；学习示例用 float64（生产环境常用整数分/decimal 以避免浮点误差）。
-	Price     float64   `json:"price"`
+	Price float64 `json:"price"`
 	// Stock：库存数量（非负整数）。
-	Stock     int       `json:"stock"`
+	Stock int `json:"stock"`
 	// CreatedAt：创建时间；time.Time 会被 encoding/json 序列化为 RFC3339 格式字符串。
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt：更新时间。
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+var ErrProductNotFound = errors.New("product not found")
 
 // GetProductByID 根据 ID 获取产品
 func GetProductByID(db *sql.DB, id int) (*Product, error) {
@@ -39,7 +41,7 @@ func GetProductByID(db *sql.DB, id int) (*Product, error) {
 	err := row.Scan(&product.ID, &product.Name, &product.Price, &product.Stock, &product.CreatedAt, &product.UpdatedAt)
 	if err == sql.ErrNoRows {
 		// 没有找到对应 id：返回业务层可识别的 not found 错误。
-		return nil, errors.New("product not found")
+		return nil, ErrProductNotFound
 	} else if err != nil {
 		// 其他错误：例如 DB 连接问题、列类型不匹配等，直接向上返回。
 		return nil, err
@@ -129,7 +131,7 @@ func UpdateProduct(db *sql.DB, product *Product) (*Product, error) {
 
 	if rowsAffected == 0 {
 		// 没有任何行被更新：按业务语义认为资源不存在。
-		return nil, errors.New("product not found")
+		return nil, ErrProductNotFound
 	}
 
 	// 回填更新时间（同样可能与 DB 中写入的时间有极小差异）。
@@ -156,7 +158,7 @@ func DeleteProduct(db *sql.DB, id int) error {
 
 	if rowsAffected == 0 {
 		// 没有删除到任何行：按业务语义认为资源不存在。
-		return errors.New("product not found")
+		return ErrProductNotFound
 	}
 
 	// 删除成功返回 nil error。
