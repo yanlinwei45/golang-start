@@ -58,14 +58,24 @@ func TestHealthCheck(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
 	}
 
-	// result：用于接收 JSON 解码结果（{"status":"ok"}）。
-	var result map[string]string
-	// Decode：把 resp.Body JSON 解码到 map；这里未处理错误（学习项目简化）。
-	json.NewDecoder(resp.Body).Decode(&result)
+	// 统一成功响应结构：{"code":200,"message":"success","data":{"status":"ok"}}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response json: %v", err)
+	}
 
-	// 断言响应字段 status 为 "ok"。
-	if result["status"] != "ok" {
-		t.Errorf("expected status 'ok', got '%s'", result["status"])
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected data object, got %T", result["data"])
+	}
+
+	status, ok := data["status"].(string)
+	if !ok {
+		t.Fatalf("expected data.status string, got %T", data["status"])
+	}
+
+	if status != "ok" {
+		t.Errorf("expected status 'ok', got '%s'", status)
 	}
 }
 
@@ -250,7 +260,7 @@ func TestDeleteProduct(t *testing.T) {
 
 	// w.Code：Recorder 的状态码字段；断言为 404。
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected Product not found, got status %d", w.Code)
+		t.Errorf("expected product not found, got status %d", w.Code)
 	}
 }
 

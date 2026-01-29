@@ -79,9 +79,17 @@ func HandleProduct(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type healthResponse struct {
+	Status string `json:"status"`
+}
+
 // HealthCheck 健康检查接口：返回固定 JSON，表明服务可用。
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    healthResponse{Status: "ok"},
+	})
 }
 
 // GetAllProducts 获取所有产品列表：调用 model 层查询 DB，并以 JSON 形式返回。
@@ -93,10 +101,10 @@ func GetAllProducts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"code":    http.StatusOK,
-		"message": "success",
-		"data":    products,
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    products,
 	})
 }
 
@@ -116,10 +124,10 @@ func GetProduct(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"code":    http.StatusOK,
-		"message": "success",
-		"data":    product,
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    product,
 	})
 
 }
@@ -168,10 +176,10 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"code":    http.StatusCreated,
-		"message": "product created",
-		"data":    createdProduct,
+	writeSuccess(w, http.StatusCreated, successResponse{
+		Code:    http.StatusCreated,
+		Message: "success",
+		Data:    createdProduct,
 	})
 }
 
@@ -225,10 +233,10 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"code":    http.StatusOK,
-		"message": "product updated",
-		"data":    updatedProduct,
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    updatedProduct,
 	})
 
 }
@@ -246,9 +254,9 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request, id int) {
 		}
 		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"code":    http.StatusOK,
-		"message": "product deleted",
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    nil,
 	})
 }

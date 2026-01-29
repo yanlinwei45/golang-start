@@ -25,3 +25,13 @@ func writeError(w http.ResponseWriter, status int, message string) {
 		Message: message,
 	})
 }
+
+type successResponse struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
+}
+
+func writeSuccess(w http.ResponseWriter, status int, data successResponse) {
+	writeJSON(w, status, data)
+}
