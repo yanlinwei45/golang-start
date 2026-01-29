@@ -40,6 +40,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 		}
 	})
 	// /api/products/：注意以 "/" 结尾时，ServeMux 会做前缀匹配；例如 /api/products/123 会进入 HandleProduct。
+	mux.HandleFunc("/api/products/search", SearchProducts)
 	mux.HandleFunc("/api/products/", HandleProduct)
 }
 
@@ -258,5 +259,30 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request, id int) {
 		Code:    http.StatusOK,
 		Message: "success",
 		Data:    nil,
+	})
+}
+
+func SearchProducts(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != "GET" {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	products, err := models.SearchProduct(utils.DB, name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    products,
 	})
 }

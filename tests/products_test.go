@@ -23,10 +23,24 @@ import (
 	"golang-starter/utils"
 )
 
+func clearProductsTable(t *testing.T) {
+	t.Helper()
+
+	if _, err := utils.DB.Exec("DELETE FROM products"); err != nil {
+		t.Fatalf("failed to clear products table: %v", err)
+	}
+}
+
 // 初始化测试数据库
 func setupTestDB() func() {
 	// 初始化全局 DB（打开 SQLite 文件并建表）。
 	utils.InitDB()
+	// 清空 products 表，避免不同测试/不同运行之间互相污染导致用例不稳定。
+	// 这里必须传入当前测试的 *testing.T 才能在失败时正确终止用例；
+	// setupTestDB 没有拿到 t，因此用 panic 的方式暴露错误（比静默忽略更安全）。
+	if _, err := utils.DB.Exec("DELETE FROM products"); err != nil {
+		panic(err)
+	}
 	// 返回 teardown 函数，供每个测试 defer 调用，确保资源释放。
 	return func() {
 		// 关闭全局 DB 连接池句柄。
@@ -264,6 +278,76 @@ func TestDeleteProduct(t *testing.T) {
 	}
 }
 
+func TestSearchProducts(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	// 创建两条产品：一条匹配，一条不匹配。
+	createProductWithName(t, "Apple")
+	createProductWithName(t, "Banana")
+
+	req := httptest.NewRequest("GET", "/api/products/search?name=App", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response json: %v", err)
+	}
+
+	data, ok := result["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected data array, got %T", result["data"])
+	}
+	if len(data) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(data))
+	}
+
+	first, ok := data[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected first element object, got %T", data[0])
+	}
+	if first["name"] != "Apple" {
+		t.Fatalf("expected first.name Apple, got %v", first["name"])
+	}
+}
+
+func TestSearchProductsMissingName(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	req := httptest.NewRequest("GET", "/api/products/search", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("expected json error response, decode failed: %v", err)
+	}
+}
+
 // 辅助函数：创建测试产品
 func createProduct(t *testing.T) int {
 	// t.Helper：标记为 helper，失败时更友好地定位到调用处而不是 helper 内部。
@@ -292,5 +376,30 @@ func createProduct(t *testing.T) int {
 	// data：响应中的 data 字段，类型是对象，因此断言为 map[string]interface{}。
 	data := result["data"].(map[string]interface{})
 	// id：从 float64 转成 int（encoding/json 默认规则）。
+	return int(data["id"].(float64))
+}
+
+func createProductWithName(t *testing.T, name string) int {
+	t.Helper()
+
+	product := fmt.Sprintf(`{"name": %q, "price": 99.99, "stock": 10}`, name)
+	req := httptest.NewRequest("POST", "/api/products", strings.NewReader(product))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected create status %d, got %d. Body: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(w.Result().Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode create response json: %v", err)
+	}
+
+	data := result["data"].(map[string]interface{})
 	return int(data["id"].(float64))
 }

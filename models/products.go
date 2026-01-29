@@ -164,3 +164,38 @@ func DeleteProduct(db *sql.DB, id int) error {
 	// 删除成功返回 nil error。
 	return nil
 }
+
+func SearchProduct(db *sql.DB, name string) ([]*Product, error) {
+	// ORDER BY id ASC：保证返回顺序稳定（便于测试与客户端展示）。
+	query := `SELECT id, name, price, stock, created_at, updated_at FROM products WHERE name LIKE ? ORDER BY id ASC`
+	// Query：返回多行结果集。
+	rows, err := db.Query(query, "%"+name+"%")
+	if err != nil {
+		// 查询失败：返回错误给上层处理（通常会转成 500）。
+		return nil, err
+	}
+	// 关闭 rows 释放资源；defer 确保函数返回时执行。
+	defer rows.Close()
+
+	// products：用切片累积所有产品；这里存指针以减少复制开销（也符合常见 Go 写法）。
+	var products []*Product
+	// rows.Next：逐行迭代结果集。
+	for rows.Next() {
+		// product：每一行创建一个新的结构体变量用于接收 Scan。
+		var product Product
+		// Scan：读取当前行各列到结构体字段。
+		if err := rows.Scan(&product.ID, &product.Name, &product.Price, &product.Stock, &product.CreatedAt, &product.UpdatedAt); err != nil {
+			return nil, err
+		}
+		// 取地址追加到切片（此处 product 是每次循环的新变量，因此地址不会互相覆盖）。
+		products = append(products, &product)
+	}
+
+	// rows.Err：检查迭代过程是否发生错误（例如中途读取失败）。
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 返回产品列表。
+	return products, nil
+}
