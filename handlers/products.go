@@ -5,6 +5,7 @@ import (
 	// encoding/json：用于 JSON 编解码（请求体解析、响应体输出）。
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	// net/http：HTTP handler 所需的核心类型与工具函数（ResponseWriter、Request、StatusCode、http.Error）。
 	"net/http"
@@ -41,6 +42,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	})
 	// /api/products/：注意以 "/" 结尾时，ServeMux 会做前缀匹配；例如 /api/products/123 会进入 HandleProduct。
 	mux.HandleFunc("/api/products/search", SearchProducts)
+	mux.HandleFunc("/api/products/bulk", ProductBulk)
 	mux.HandleFunc("/api/products/", HandleProduct)
 }
 
@@ -284,5 +286,58 @@ func SearchProducts(w http.ResponseWriter, r *http.Request) {
 		Code:    http.StatusOK,
 		Message: "success",
 		Data:    products,
+	})
+}
+
+func ProductBulk(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	defer r.Body.Close()
+
+	var products []models.Product
+
+	if err := json.NewDecoder(r.Body).Decode(&products); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if len(products) == 0 {
+		writeError(w, http.StatusBadRequest, "products is empty")
+		return
+	}
+
+	for i, product := range products {
+		if product.Name == "" {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("products[%d].name is required", i))
+			return
+		}
+		if product.Price <= 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("products[%d].price must be greater than 0", i))
+			return
+		}
+		if product.Stock < 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("products[%d].stock cannot be negative", i))
+			return
+		}
+	}
+
+	productPtrs := make([]*models.Product, 0, len(products))
+	for i := range products {
+		productPtrs = append(productPtrs, &products[i])
+	}
+
+	created, err := models.ProductsBulk(utils.DB, productPtrs)
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeSuccess(w, http.StatusCreated, successResponse{
+		Code:    http.StatusCreated,
+		Message: "success",
+		Data:    created,
 	})
 }

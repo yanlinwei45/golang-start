@@ -4,6 +4,8 @@ package models
 import (
 	// database/sql：提供 Query/Exec/Row/Rows 等，用于与具体 driver（sqlite3）交互。
 	"database/sql"
+	"strings"
+
 	// errors：构造简单错误（本项目用 error message 来区分 not found）。
 	"errors"
 	// time：生成 created_at/updated_at 时间戳。
@@ -198,4 +200,43 @@ func SearchProduct(db *sql.DB, name string) ([]*Product, error) {
 
 	// 返回产品列表。
 	return products, nil
+}
+
+func ProductsBulk(db *sql.DB, products []*Product) ([]*Product, error) {
+	query := `
+		INSERT INTO products (name, price, stock, created_at, updated_at) 
+		VALUES 
+	`
+	args := []any{}
+	placeholders := []string{}
+
+	time_now := time.Now()
+
+	for _, product := range products {
+		placeholders = append(placeholders, "(?,?,?,?,?)")
+		args = append(args, product.Name, product.Price, product.Stock, time_now, time_now)
+	}
+
+	query += strings.Join(placeholders, ",")
+
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	ids, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	created := []*Product{}
+
+	for i, product := range products {
+		product.ID = int(ids) + i
+		product.CreatedAt = time_now
+		product.UpdatedAt = time_now
+		created = append(created, product)
+	}
+
+	return created, nil
 }

@@ -348,6 +348,115 @@ func TestSearchProductsMissingName(t *testing.T) {
 	}
 }
 
+func TestBulkCreateProductsSuccess(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	payload := `[{"name":"A","price":10.0,"stock":1},{"name":"B","price":20.0,"stock":0}]`
+	req := httptest.NewRequest("POST", "/api/products/bulk", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusCreated, resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response json: %v", err)
+	}
+
+	data, ok := result["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected data array, got %T", result["data"])
+	}
+	if len(data) != 2 {
+		t.Fatalf("expected 2 created products, got %d", len(data))
+	}
+
+	// 检查每条都有 id 且 name 正确。
+	names := map[string]bool{}
+	for i := range data {
+		item, ok := data[i].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected element object, got %T", data[i])
+		}
+		if _, ok := item["id"].(float64); !ok {
+			t.Fatalf("expected element.id number, got %T", item["id"])
+		}
+		if name, ok := item["name"].(string); ok {
+			names[name] = true
+		}
+	}
+	if !names["A"] || !names["B"] {
+		t.Fatalf("expected created names A and B, got %v", names)
+	}
+}
+
+func TestBulkCreateProductsRollbackOnInvalidItem(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	// 先插入一条基准数据，方便验证回滚不会改变总数（除了这条基准数据）。
+	createProductWithName(t, "Baseline")
+
+	// 第二个元素非法（price<=0），期望整体 400，且不会插入第一条合法数据。
+	payload := `[{"name":"Good","price":10.0,"stock":1},{"name":"Bad","price":0,"stock":1}]`
+	req := httptest.NewRequest("POST", "/api/products/bulk", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+
+	// 再拉全量列表，确保只存在 Baseline，不存在 Good。
+	req = httptest.NewRequest("GET", "/api/products", nil)
+	w = httptest.NewRecorder()
+	mux = http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var listResult map[string]interface{}
+	if err := json.NewDecoder(w.Result().Body).Decode(&listResult); err != nil {
+		t.Fatalf("failed to decode list response json: %v", err)
+	}
+	listData, ok := listResult["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected list data array, got %T", listResult["data"])
+	}
+	if len(listData) != 1 {
+		t.Fatalf("expected 1 product after rollback, got %d", len(listData))
+	}
+	first, ok := listData[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected first element object, got %T", listData[0])
+	}
+	if first["name"] != "Baseline" {
+		t.Fatalf("expected remaining product Baseline, got %v", first["name"])
+	}
+}
+
 // 辅助函数：创建测试产品
 func createProduct(t *testing.T) int {
 	// t.Helper：标记为 helper，失败时更友好地定位到调用处而不是 helper 内部。
