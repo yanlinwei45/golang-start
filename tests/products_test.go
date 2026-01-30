@@ -348,6 +348,139 @@ func TestSearchProductsMissingName(t *testing.T) {
 	}
 }
 
+func TestGetAllProductsDefaultPagination(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	createProductWithName(t, "P1")
+	createProductWithName(t, "P2")
+
+	req := httptest.NewRequest("GET", "/api/products", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response json: %v", err)
+	}
+
+	if _, ok := result["data"].([]interface{}); !ok {
+		t.Fatalf("expected data array, got %T", result["data"])
+	}
+}
+
+func TestGetAllProductsLimitOffset(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	createProductWithName(t, "P1")
+	createProductWithName(t, "P2")
+
+	req := httptest.NewRequest("GET", "/api/products?limit=1&offset=0", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response json: %v", err)
+	}
+
+	data, ok := result["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected data array, got %T", result["data"])
+	}
+	if len(data) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(data))
+	}
+}
+
+func TestGetAllProductsOrderDesc(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	createProductWithName(t, "P1")
+	createProductWithName(t, "P2")
+	createProductWithName(t, "P3")
+
+	req := httptest.NewRequest("GET", "/api/products?order=id_desc", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response json: %v", err)
+	}
+
+	data, ok := result["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected data array, got %T", result["data"])
+	}
+	if len(data) < 2 {
+		t.Fatalf("expected at least 2 products, got %d", len(data))
+	}
+
+	first := data[0].(map[string]interface{})
+	second := data[1].(map[string]interface{})
+	firstID := int(first["id"].(float64))
+	secondID := int(second["id"].(float64))
+	if firstID <= secondID {
+		t.Fatalf("expected desc order (firstID > secondID), got %d and %d", firstID, secondID)
+	}
+}
+
+func TestGetAllProductsInvalidLimitReturns400(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	req := httptest.NewRequest("GET", "/api/products?limit=-1", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+}
+
 func TestBulkCreateProductsSuccess(t *testing.T) {
 	teardown := setupTestDB()
 	defer teardown()

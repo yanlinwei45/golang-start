@@ -99,8 +99,57 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 // GetAllProducts 获取所有产品列表：调用 model 层查询 DB，并以 JSON 形式返回。
 func GetAllProducts(w http.ResponseWriter, r *http.Request) {
+
+	query := r.URL.Query()
+
+	params := models.GetAllProductsParams{}
+	limitStr := query.Get("limit")
+	offsetStr := query.Get("offset")
+	order := query.Get("order")
+
+	if limitStr == "" {
+		params.Limit = 20
+	}
+
+	if limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		if limit > 0 && limit <= 100 {
+			params.Limit = limit
+		}
+		if limit < 0 {
+			writeError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+	}
+
+	if offsetStr == "" {
+		params.Offset = 0
+	}
+
+	if offsetStr != "" {
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid offset")
+			return
+		}
+
+		if offset >= 0 {
+			params.Offset = offset
+		}
+	}
+
+	if order == "id_asc" || order == "id_desc" {
+		params.Order = order
+	} else {
+		params.Order = "id_asc"
+	}
+
 	// utils.DB：全局数据库连接（*sql.DB，实际上是连接池句柄），并发安全。
-	products, err := models.GetAllProducts(utils.DB)
+	products, err := models.GetAllProducts(utils.DB, params)
 	if err != nil {
 		// 500：服务端错误（例如 DB 查询失败、SQL 语法错误、连接异常等）。
 		writeError(w, http.StatusInternalServerError, err.Error())

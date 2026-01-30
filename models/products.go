@@ -56,12 +56,30 @@ func GetProductByID(db *sql.DB, id int) (*Product, error) {
 	return &product, nil
 }
 
+type GetAllProductsParams struct {
+	Limit  int    `json:"limit"`
+	Offset int    `json:"offset"`
+	Order  string `json:"order_by"`
+}
+
 // GetAllProducts 获取所有产品
-func GetAllProducts(db *sql.DB) ([]*Product, error) {
+func GetAllProducts(db *sql.DB, params GetAllProductsParams) ([]*Product, error) {
 	// ORDER BY id ASC：保证返回顺序稳定（便于测试与客户端展示）。
-	query := `SELECT id, name, price, stock, created_at, updated_at FROM products ORDER BY id ASC`
+	query := `
+	SELECT id, name, price, stock, created_at, updated_at 
+	FROM products  
+	ORDER BY id %s
+	LIMIT ? OFFSET ?
+	`
+	orderBy := "ASC"
+	if params.Order == "id_desc" {
+		orderBy = "DESC"
+	} else {
+		orderBy = "ASC"
+	}
+	query = fmt.Sprintf(query, orderBy)
 	// Query：返回多行结果集。
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, params.Limit, params.Offset)
 	if err != nil {
 		// 查询失败：返回错误给上层处理（通常会转成 500）。
 		return nil, err
