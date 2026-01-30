@@ -4,6 +4,7 @@ package models
 import (
 	// database/sql：提供 Query/Exec/Row/Rows 等，用于与具体 driver（sqlite3）交互。
 	"database/sql"
+	"fmt"
 	"strings"
 
 	// errors：构造简单错误（本项目用 error message 来区分 not found）。
@@ -29,6 +30,8 @@ type Product struct {
 }
 
 var ErrProductNotFound = errors.New("product not found")
+
+var ErrNoFields = errors.New("no fields to update")
 
 // GetProductByID 根据 ID 获取产品
 func GetProductByID(db *sql.DB, id int) (*Product, error) {
@@ -239,4 +242,71 @@ func ProductsBulk(db *sql.DB, products []*Product) ([]*Product, error) {
 	}
 
 	return created, nil
+}
+
+func UpdateLocalProduct(db *sql.DB, id int, fields []string, p Product) (*Product, error) {
+	if len(fields) == 0 {
+		return nil, ErrNoFields
+	}
+
+	setParts := []string{}
+	args := []any{}
+
+	for _, field := range fields {
+		switch field {
+		case "name":
+			setParts = append(setParts, "name = ?")
+			args = append(args, p.Name)
+		case "price":
+			setParts = append(setParts, "price = ?")
+			args = append(args, p.Price)
+		case "stock":
+			setParts = append(setParts, "stock = ?")
+			args = append(args, p.Stock)
+		default:
+			return nil, fmt.Errorf("invalid field: %s", field)
+		}
+	}
+
+	setParts = append(setParts, "updated_at = ?")
+	args = append(args, time.Now(), id)
+
+	query := fmt.Sprintf(
+		"UPDATE products SET %s WHERE id = ?",
+		strings.Join(setParts, ", "),
+	)
+
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, ErrProductNotFound
+	}
+
+	// 查最新数据返回
+	row := db.QueryRow(`
+		SELECT id, name, price, stock, created_at, updated_at
+		FROM products WHERE id = ?
+	`, id)
+
+	var updated Product
+	err = row.Scan(
+		&updated.ID,
+		&updated.Name,
+		&updated.Price,
+		&updated.Stock,
+		&updated.CreatedAt,
+		&updated.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &updated, nil
 }

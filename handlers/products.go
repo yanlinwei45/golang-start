@@ -76,6 +76,8 @@ func HandleProduct(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		// DELETE /api/products/{id}：删除单个产品。
 		DeleteProduct(w, r, id)
+	case "PATCH":
+		UpdateLocalProduct(w, r, id)
 	default:
 		// 不支持的方法返回 405。
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -340,4 +342,49 @@ func ProductBulk(w http.ResponseWriter, r *http.Request) {
 		Message: "success",
 		Data:    created,
 	})
+}
+
+func UpdateLocalProduct(w http.ResponseWriter, r *http.Request, id int) {
+	var product models.Product
+	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+
+	args := []string{}
+
+	if product.Name != "" {
+		args = append(args, "name")
+	}
+
+	if product.Price > 0 {
+		args = append(args, "price")
+	}
+
+	if product.Stock > 0 {
+		args = append(args, "stock")
+	}
+
+	updatedProduct, err := models.UpdateLocalProduct(utils.DB, id, args, product)
+
+	if err != nil {
+		if errors.Is(err, models.ErrProductNotFound) {
+			writeError(w, http.StatusNotFound, "product not found")
+			return
+		}
+		if errors.Is(err, models.ErrNoFields) {
+			writeError(w, http.StatusBadRequest, "no fields to update")
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeSuccess(w, http.StatusOK, successResponse{
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    updatedProduct,
+	})
+
 }

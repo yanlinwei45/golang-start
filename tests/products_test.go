@@ -457,6 +457,75 @@ func TestBulkCreateProductsRollbackOnInvalidItem(t *testing.T) {
 	}
 }
 
+func TestPatchProductPriceOnlySuccess(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	id := createProductWithName(t, "PatchTarget")
+
+	payload := `{"price":123.45}`
+	req := httptest.NewRequest("PATCH", fmt.Sprintf("/api/products/%d", id), strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, body)
+	}
+}
+
+func TestPatchProductEmptyBodyReturns400(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	id := createProductWithName(t, "PatchTarget")
+
+	req := httptest.NewRequest("PATCH", fmt.Sprintf("/api/products/%d", id), strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+}
+
+func TestPatchProductNotFoundReturns404(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	payload := `{"price":123.45}`
+	req := httptest.NewRequest("PATCH", "/api/products/99999999", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusNotFound, resp.StatusCode, body)
+	}
+}
+
 // 辅助函数：创建测试产品
 func createProduct(t *testing.T) int {
 	// t.Helper：标记为 helper，失败时更友好地定位到调用处而不是 helper 内部。
