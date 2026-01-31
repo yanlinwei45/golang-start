@@ -192,6 +192,46 @@ func TestGetProduct(t *testing.T) {
 	}
 }
 
+func TestGetProductZeroIDReturns400(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	req := httptest.NewRequest("GET", "/api/products/0", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+}
+
+func TestGetProductNegativeIDReturns400(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	req := httptest.NewRequest("GET", "/api/products/-1", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+}
+
 // TestUpdateProduct 测试更新产品接口
 func TestUpdateProduct(t *testing.T) {
 	// 初始化测试 DB。
@@ -466,6 +506,46 @@ func TestGetAllProductsInvalidLimitReturns400(t *testing.T) {
 	defer teardown()
 
 	req := httptest.NewRequest("GET", "/api/products?limit=-1", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+}
+
+func TestGetAllProductsInvalidOrderReturns400(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	req := httptest.NewRequest("GET", "/api/products?order=totally_invalid", nil)
+	w := httptest.NewRecorder()
+
+	mux := http.NewServeMux()
+	handlers.RegisterRoutes(mux)
+	mux.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status %d, got %d. Body: %s", http.StatusBadRequest, resp.StatusCode, body)
+	}
+}
+
+func TestGetAllProductsEmptyOrderReturns400(t *testing.T) {
+	teardown := setupTestDB()
+	defer teardown()
+
+	req := httptest.NewRequest("GET", "/api/products?order=", nil)
 	w := httptest.NewRecorder()
 
 	mux := http.NewServeMux()

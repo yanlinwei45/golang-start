@@ -65,6 +65,11 @@ func HandleProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
 	// 按 method 分发到单个资源的 CRUD 操作。
 	switch r.Method {
 	case "GET":
@@ -144,7 +149,19 @@ func GetAllProducts(w http.ResponseWriter, r *http.Request) {
 
 	if order == "id_asc" || order == "id_desc" {
 		params.Order = order
-	} else {
+	}
+
+	if query.Has("order") && order == "" {
+		writeError(w, http.StatusBadRequest, "invalid order")
+		return
+	}
+
+	if query.Has("order") && order != "id_asc" && order != "id_desc" {
+		writeError(w, http.StatusBadRequest, "invalid order")
+		return
+	}
+
+	if query.Has("order") == false {
 		params.Order = "id_asc"
 	}
 
